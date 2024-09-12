@@ -8,6 +8,17 @@ project('frida-gum', 'c', 'cpp',
   ],
 )
 
+enable_bitcode = get_option('bitcode')
+if enable_bitcode
+  message('Bitcode embedding is enabled.')
+  common_link_args = ['-flto']
+  # 
+  common_c_args = ['-fembed-bitcode']
+
+  add_project_arguments(common_c_args, language: ['c', 'cpp'])
+  add_project_link_arguments(common_link_args, language: ['c', 'cpp'])
+endif
+
 python = import('python').find_installation()
 
 releng = meson.global_source_root() / 'releng'
@@ -624,8 +635,10 @@ if have_gumjs
     'tests=false',
   ])
 
-  libtcc_dep = dependency('libtcc', required: host_arch not in ['mips', 'mips64'])
-  cdata.set('HAVE_TINYCC', libtcc_dep.found())
+  if get_option('cmodule').allowed()
+    libtcc_dep = dependency('libtcc', required: host_arch not in ['mips', 'mips64'])
+    cdata.set('HAVE_TINYCC', libtcc_dep.found())
+  endif
 
   if host_arch == 'arm' and cc.has_function('__aeabi_memmove')
     cdata.set('HAVE_AEABI_MEMORY_BUILTINS', 1)

@@ -89,3 +89,15 @@ option('tests',
   value: 'auto',
   description: 'Build tests'
 )
+
+option('bitcode',
+  type: 'boolean',
+  value: false,
+  description: 'Enable bitcode for gum and dependencies'
+)
+
+option('cmodule',
+  type: 'feature',
+  value: 'enabled',
+  description: 'Include or exclude the cmodule feature'
+)
