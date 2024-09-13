@@ -4,19 +4,17 @@ project('frida-gum', 'c', 'cpp',
     check: true).stdout().strip(),
   meson_version: '>=1.1.0',
   default_options: [
-    'c_std=gnu99,c99',
+    'c_std=gnu99,c99'
   ],
 )
 
 enable_bitcode = get_option('bitcode')
 if enable_bitcode
   message('Bitcode embedding is enabled.')
-  common_link_args = ['-flto']
-  # 
   common_c_args = ['-fembed-bitcode']
 
   add_project_arguments(common_c_args, language: ['c', 'cpp'])
-  add_project_link_arguments(common_link_args, language: ['c', 'cpp'])
+  add_project_link_arguments(['-fembed-bitcode', '-flto'], language: ['c', 'cpp'])
 endif
 
 python = import('python').find_installation()
