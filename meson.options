@@ -96,6 +96,12 @@ option('bitcode',
   description: 'Enable bitcode for gum and dependencies'
 )
 
+option('prefixsyms',
+  type: 'boolean',
+  value: true,
+  description: 'Enable redefining symbols with a frida_ prefix'
+)
+
 option('cmodule',
   type: 'feature',
   value: 'enabled',

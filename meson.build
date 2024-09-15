@@ -10,10 +10,9 @@ project('frida-gum', 'c', 'cpp',
 
 enable_bitcode = get_option('bitcode')
 if enable_bitcode
-  message('Bitcode embedding is enabled.')
-  common_c_args = ['-fembed-bitcode']
+  message('Embedding Bitcode')
 
-  add_project_arguments(common_c_args, language: ['c', 'cpp'])
+  add_project_arguments(['-fembed-bitcode'], language: ['c', 'cpp'])
   add_project_link_arguments(['-fembed-bitcode', '-flto'], language: ['c', 'cpp'])
 endif
 
@@ -437,12 +436,18 @@ if get_option('devkits').length() != 0
   endif
   mkdevkit = [python, releng / 'mkdevkit.py']
   uninstalled_dir = meson.global_build_root() / 'meson-uninstalled'
+
+  prefix_syms = get_option('prefixsyms')
+
   devkit_options = [
     '--cc', '>>>', cc.cmd_array(), '<<<',
     '--c-args', '>>>', get_option('c_args'), '<<<',
     '--pkg-config', '>>>', find_program('pkg-config'), '<<<',
     '--pkg-config-path', '>>>', uninstalled_dir, get_option('pkg_config_path'), '<<<',
   ]
+  if prefix_syms
+    devkit_options += ['--prefixsyms']
+  endif
   if cc.get_argument_syntax() == 'msvc'
     static_lib_prefix = ''
     static_lib_suffix = '.lib'
