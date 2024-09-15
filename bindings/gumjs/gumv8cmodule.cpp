@@ -4,6 +4,8 @@
  * Licence: wxWindows Library Licence, Version 3.1
  */
 
+#ifdef HAVE_CMODULE
+
 #include "gumv8cmodule.h"
 
 #include "gumcmodule.h"
@@ -414,3 +416,5 @@ gum_cmodule_entry_on_weak_notify (
   auto self = info.GetParameter ();
   g_hash_table_remove (self->module->cmodules, self);
 }
+
+#endif /* HAVE_CMODULE */

@@ -7,6 +7,7 @@
 #ifndef __GUM_CMODULE_H__
 #define __GUM_CMODULE_H__
 
+#ifdef HAVE_CMODULE
 #include <gum/gummemory.h>
 
 G_BEGIN_DECLS
@@ -108,4 +109,5 @@ GUM_API void gum_cmodule_drop_metadata (GumCModule * self);
 
 G_END_DECLS
 
+#endif /* HAVE_CMODULE */
 #endif

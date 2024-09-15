@@ -4,6 +4,8 @@
  * Licence: wxWindows Library Licence, Version 3.1
  */
 
+#ifdef HAVE_CMODULE
+
 #include "gumquickcmodule.h"
 
 #include "gumcmodule.h"
@@ -416,3 +418,5 @@ GUMJS_DEFINE_FUNCTION (gumjs_cmodule_dispose)
 
   return JS_UNDEFINED;
 }
+
+#endif /* HAVE_CMODULE */

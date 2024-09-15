@@ -643,6 +643,10 @@ if have_gumjs
     cdata.set('HAVE_TINYCC', libtcc_dep.found())
   endif
 
+  if not get_option('cmodule').allowed()
+    cdata.set('HAVE_CMODULE', false)
+  endif
+
   if host_arch == 'arm' and cc.has_function('__aeabi_memmove')
     cdata.set('HAVE_AEABI_MEMORY_BUILTINS', 1)
   endif

@@ -3,7 +3,7 @@
  *
  * Licence: wxWindows Library Licence, Version 3.1
  */
-
+#ifdef HAVE_CMODULE
 #include "gumcmodule.h"
 
 #include <stdio.h>
@@ -1826,3 +1826,5 @@ gum_append_error (GString ** messages,
     g_string_append (*messages, msg);
   }
 }
+
+#endif /* HAVE_CMODULE */
