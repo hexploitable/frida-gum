@@ -3,8 +3,15 @@
  *
  * Licence: wxWindows Library Licence, Version 3.1
  */
-#ifdef HAVE_CMODULE
 #include "gumcmodule.h"
+
+gboolean gum_cmodule_api_is_available(void) {
+#ifdef HAVE_CMODULE
+  return true;
+#else
+  return false;
+#endif
+}
 
 #include <stdio.h>
 #include <string.h>
@@ -1826,5 +1833,3 @@ gum_append_error (GString ** messages,
     g_string_append (*messages, msg);
   }
 }
-
-#endif /* HAVE_CMODULE */
