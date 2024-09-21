@@ -639,12 +639,12 @@ if have_gumjs
   ])
 
   if get_option('cmodule').allowed()
+    cdata.set('HAVE_CMODULE', true)
     libtcc_dep = dependency('libtcc', required: host_arch not in ['mips', 'mips64'])
     cdata.set('HAVE_TINYCC', libtcc_dep.found())
-  endif
-
-  if not get_option('cmodule').allowed()
-    cdata.set('HAVE_CMODULE', false)
+  else
+    libtcc_dep = disabler()
+    libtcc_incdir = ''
   endif
 
   if host_arch == 'arm' and cc.has_function('__aeabi_memmove')

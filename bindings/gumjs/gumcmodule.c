@@ -7,9 +7,9 @@
 
 gboolean gum_cmodule_api_is_available(void) {
 #ifdef HAVE_CMODULE
-  return true;
+  return TRUE;
 #else
-  return false;
+  return FALSE;
 #endif
 }
 

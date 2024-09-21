@@ -7,7 +7,6 @@
 #ifndef __GUM_CMODULE_H__
 #define __GUM_CMODULE_H__
 
-#ifdef HAVE_CMODULE
 #include <gum/gummemory.h>
 
 G_BEGIN_DECLS
@@ -111,5 +110,4 @@ GUM_API gboolean gum_cmodule_api_is_available (void);
 
 G_END_DECLS
 
-#endif /* HAVE_CMODULE */
 #endif

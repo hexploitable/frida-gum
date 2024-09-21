@@ -9,7 +9,6 @@
 
 #include "gumv8core.h"
 
-#ifdef HAVE_CMODULE
 
 struct GumV8CModule
 {
@@ -25,7 +24,5 @@ G_GNUC_INTERNAL void _gum_v8_cmodule_init (GumV8CModule * self,
 G_GNUC_INTERNAL void _gum_v8_cmodule_realize (GumV8CModule * self);
 G_GNUC_INTERNAL void _gum_v8_cmodule_dispose (GumV8CModule * self);
 G_GNUC_INTERNAL void _gum_v8_cmodule_finalize (GumV8CModule * self);
-
-#endif /* HAVE_CMODULE */
 
 #endif

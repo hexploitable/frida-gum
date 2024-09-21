@@ -4,7 +4,6 @@
  * Licence: wxWindows Library Licence, Version 3.1
  */
 
-#ifdef HAVE_CMODULE
 
 #include "gumquickcmodule.h"
 
@@ -72,9 +71,6 @@ _gum_quick_cmodule_init (GumQuickCModule * self,
 {
   JSContext * ctx = core->ctx;
   JSValue proto, ctor;
-  
-  if (!gum_quick_cmodule_check_api_available (ctx))
-    return JS_EXCEPTION;
 
   self->core = core;
 
@@ -126,6 +122,8 @@ gum_quick_cmodule_get (JSContext * ctx,
 
 GUMJS_DEFINE_GETTER (gumjs_cmodule_get_builtins)
 {
+  if (!gum_quick_cmodule_check_api_available(ctx))
+    return JS_EXCEPTION;
   JSValue result;
   GumGetBuiltinsOperation op;
 
@@ -180,6 +178,9 @@ gum_store_builtin_header (const GumCHeaderDetails * details,
 
 GUMJS_DEFINE_CONSTRUCTOR (gumjs_cmodule_construct)
 {
+  if (!gum_quick_cmodule_check_api_available(ctx))
+    return JS_EXCEPTION;
+
   JSValue result;
   GumQuickCModule * parent;
   const gchar * source;
@@ -444,6 +445,3 @@ gum_quick_cmodule_check_api_available (JSContext * ctx)
 
   return TRUE;
 }
-
-
-#endif /* HAVE_CMODULE */

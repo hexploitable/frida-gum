@@ -220,15 +220,15 @@ gumjs_generated_bindings = custom_target('gumjs-generated-bindings',
 )
 gumjs_sources += [gumjs_generated_bindings]
 
-if libtcc_dep.found()
+# if libtcc_dep.found()
   if libtcc_dep.type_name() == 'internal'
     libtcc_incdir = meson.project_source_root() / 'subprojects' / 'tinycc' / 'include'
   else
     libtcc_incdir = libtcc_dep.get_variable('libdir') / 'tcc' / 'include'
   endif
-else
-  libtcc_incdir = ''
-endif
+# else
+#   libtcc_incdir = ''
+# endif
 
 backends = []
 if quickjs_dep.found()
@@ -269,9 +269,12 @@ gumjs_deps = [
   gio_os_package_dep,
   json_glib_dep,
   ffi_dep,
-  libtcc_dep,
   sqlite_dep,
 ]
+
+if get_option('cmodule').allowed()
+  gumjs_deps += libtcc_dep
+endif
 
 gumjs = library('frida-gumjs-' + api_version, gumjs_sources,
   c_args: frida_component_cflags,
