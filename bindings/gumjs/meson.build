@@ -220,15 +220,19 @@ gumjs_generated_bindings = custom_target('gumjs-generated-bindings',
 )
 gumjs_sources += [gumjs_generated_bindings]
 
-# if libtcc_dep.found()
-  if libtcc_dep.type_name() == 'internal'
-    libtcc_incdir = meson.project_source_root() / 'subprojects' / 'tinycc' / 'include'
+if get_option('cmodule').allowed()
+  if libtcc_dep.found()
+    if libtcc_dep.type_name() == 'internal'
+      libtcc_incdir = meson.project_source_root() / 'subprojects' / 'tinycc' / 'include'
+    else
+      libtcc_incdir = libtcc_dep.get_variable('libdir') / 'tcc' / 'include'
+    endif
   else
-    libtcc_incdir = libtcc_dep.get_variable('libdir') / 'tcc' / 'include'
+    libtcc_incdir = ''
   endif
-# else
-#   libtcc_incdir = ''
-# endif
+else
+  libtcc_incdir = ''
+endif
 
 backends = []
 if quickjs_dep.found()
