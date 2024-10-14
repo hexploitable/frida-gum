@@ -679,6 +679,7 @@ gum_cancellable_interrupt_handler (JSRuntime * runtime,
   if (g_cancellable_is_cancelled (cancellable))
   {
     rc = 1;
+    g_print ("We are cancelled!\n");
     g_object_unref (cancellable);
   }
 
@@ -694,13 +695,6 @@ gum_quick_script_execute_entrypoints (GumQuickScript * self,
   GArray * entrypoints;
   guint i;
   gboolean done;
-
-  // Check if the task was provided a cancellable
-  if (task->cancellable != NULL)
-  {
-    JSRuntime * runtime = JS_GetRuntime (ctx);
-    JS_SetInterruptHandler (runtime, gum_cancellable_interrupt_handler, task->cancellable);
-  }
 
   _gum_quick_scope_enter (&scope, &self->core);
 
@@ -720,6 +714,13 @@ gum_quick_script_execute_entrypoints (GumQuickScript * self,
     for (i = 0; i != entrypoints->len; i++)
     {
       JSValue result;
+
+      // Check if the task was provided a cancellable
+      if (task->cancellable != NULL)
+      {
+        JSRuntime * runtime = JS_GetRuntime (ctx);
+        JS_SetInterruptHandler (runtime, gum_cancellable_interrupt_handler, task->cancellable);
+      }
 
       result = JS_EvalFunction (ctx, g_array_index (entrypoints, JSValue, i));
       if (JS_IsException (result))
@@ -767,6 +768,13 @@ gum_quick_script_execute_entrypoints (GumQuickScript * self,
     for (i = 0; i != entrypoints->len; i++)
     {
       JSValue result;
+
+      // Check if the task was provided a cancellable
+      if (task->cancellable != NULL)
+      {
+        JSRuntime * runtime = JS_GetRuntime (ctx);
+        JS_SetInterruptHandler (runtime, gum_cancellable_interrupt_handler, task->cancellable);
+      }
 
       result = JS_EvalFunction (ctx, g_array_index (entrypoints, JSValue, i));
       if (JS_IsException (result))
