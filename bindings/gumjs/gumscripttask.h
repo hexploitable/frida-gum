@@ -47,4 +47,33 @@ G_GNUC_INTERNAL void gum_script_task_run_in_js_thread_sync (
 
 G_END_DECLS
 
+// TODO: we should move struct _GumScriptTask back to gumscripttask.c when we are done to preserve the opaque nature of the type
+
+struct _GumScriptTask
+{
+  GObject parent;
+
+  gboolean disposed;
+
+  GumScriptTaskFunc func;
+  gpointer source_object;
+  gpointer source_tag;
+  GCancellable * cancellable;
+  GAsyncReadyCallback callback;
+  gpointer callback_data;
+  gpointer task_data;
+  GDestroyNotify task_data_destroy;
+
+  GMainContext * context;
+
+  gboolean synchronous;
+  GMutex mutex;
+  GCond cond;
+
+  volatile gboolean completed;
+  gpointer result;
+  GDestroyNotify result_destroy;
+  GError * error;
+};
+
 #endif

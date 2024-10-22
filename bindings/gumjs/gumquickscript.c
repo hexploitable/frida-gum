@@ -34,6 +34,9 @@
 # include "gumquickdatabase.h"
 #endif
 
+// XXX for debug prints
+#include "debugprint.h"
+
 typedef guint GumScriptState;
 typedef struct _GumUnloadNotifyCallback GumUnloadNotifyCallback;
 typedef void (* GumUnloadNotifyFunc) (GumQuickScript * self,
@@ -54,6 +57,7 @@ struct _GumQuickScript
   GumQuickScriptBackend * backend;
 
   GumScriptState state;
+  gboolean is_cancelled;
   GSList * on_unload;
   JSRuntime * rt;
   JSContext * ctx;
@@ -187,6 +191,12 @@ struct _GumWorkerMessageDelivery
   GBytes * data;
 };
 
+#if 0
+// To be used to query termination
+static GMutex gGumJSTerminationMutex;
+static gboolean gGumJSWasTerminated = false;
+#endif
+
 static void gum_quick_script_iface_init (gpointer g_iface, gpointer iface_data);
 
 static void gum_quick_script_dispose (GObject * object);
@@ -226,6 +236,7 @@ static void gum_quick_script_complete_unload_task (GumQuickScript * self,
 static void gum_quick_script_try_unload (GumQuickScript * self);
 static void gum_quick_script_once_unloaded (GumQuickScript * self,
     GumUnloadNotifyFunc func, gpointer data, GDestroyNotify data_destroy);
+static void gum_quick_script_cancel (GumScript * script);
 
 static void gum_quick_script_set_message_handler (GumScript * script,
     GumScriptMessageHandler handler, gpointer data,
@@ -260,6 +271,10 @@ static void gum_quick_worker_do_emit (GumWorkerMessageDelivery * d);
 static GumWorkerMessageDelivery * gum_worker_message_delivery_new (
     GumQuickWorker * worker, const gchar * message, GBytes * data);
 static void gum_worker_message_delivery_free (GumWorkerMessageDelivery * d);
+
+static void gum_quick_register_interrupt_handler(GumQuickScript * script);
+
+static void gum_quick_remove_interrupt_handler(GumQuickScript * script);
 
 G_DEFINE_TYPE_EXTENDED (GumQuickScript,
                         gum_quick_script,
@@ -309,6 +324,7 @@ gum_quick_script_iface_init (gpointer g_iface,
   iface->unload = gum_quick_script_unload;
   iface->unload_finish = gum_quick_script_unload_finish;
   iface->unload_sync = gum_quick_script_unload_sync;
+  iface->cancel = gum_quick_script_cancel;
 
   iface->set_message_handler = gum_quick_script_set_message_handler;
   iface->post = gum_quick_script_post;
@@ -333,10 +349,11 @@ gum_quick_script_dispose (GObject * object)
 {
   GumQuickScript * self = GUM_QUICK_SCRIPT (object);
   GumScript * script = GUM_SCRIPT (self);
+  GPRINT_CTAG(BOLDMAGENTA, "[dispose]", "is script cacnelled: %d\n", self->is_cancelled);
 
   gum_quick_script_set_message_handler (script, NULL, NULL, NULL);
 
-  if (self->state == GUM_SCRIPT_STATE_LOADED)
+  if (self->state == GUM_SCRIPT_STATE_LOADED || self->is_cancelled)
   {
     /* dispose() will be triggered again at the end of unload() */
     gum_quick_script_unload (script, NULL, NULL, NULL);
@@ -526,6 +543,8 @@ gum_quick_script_destroy_context (GumQuickScript * self)
 {
   GumQuickCore * core = &self->core;
 
+  GPRINT_CTAG_IC(BOLDMAGENTA, "[destroy-context]", "destroying context...");
+
   g_assert (self->ctx != NULL);
 
   {
@@ -559,6 +578,8 @@ gum_quick_script_destroy_context (GumQuickScript * self)
     _gum_quick_core_dispose (core);
 
     _gum_quick_scope_leave (&scope);
+
+    GPRINT_C_IC(GREEN, "ok\n");
   }
 
   {
@@ -613,6 +634,7 @@ gum_quick_script_load (GumScript * script,
   GumQuickScript * self = GUM_QUICK_SCRIPT (script);
   GumScriptTask * task;
 
+  self->is_cancelled = false;
   task = gum_script_task_new ((GumScriptTaskFunc) gum_quick_script_do_load,
       self, cancellable, callback, user_data);
   gum_script_task_run_in_js_thread (task,
@@ -634,6 +656,7 @@ gum_quick_script_load_sync (GumScript * script,
   GumQuickScript * self = GUM_QUICK_SCRIPT (script);
   GumScriptTask * task;
 
+  self->is_cancelled = false;
   task = gum_script_task_new ((GumScriptTaskFunc) gum_quick_script_do_load,
       self, cancellable, NULL, NULL);
   gum_script_task_run_in_js_thread_sync (task,
@@ -651,7 +674,10 @@ gum_quick_script_do_load (GumScriptTask * task,
   if (self->state != GUM_SCRIPT_STATE_CREATED)
     goto invalid_operation;
 
+
   self->state = GUM_SCRIPT_STATE_LOADING;
+
+  gum_quick_register_interrupt_handler(self);
 
   gum_quick_script_execute_entrypoints (self, task);
 
@@ -667,6 +693,59 @@ invalid_operation:
   }
 }
 
+static int
+gum_cancellable_interrupt_handler (JSRuntime * runtime,
+                                   void * opaque)
+{
+  if (opaque == NULL)
+    return 0;
+  GumQuickScript *script = (GumQuickScript *) opaque;
+  g_object_ref(script);
+
+  int rc = 0;
+
+  // Check if we are cancelled
+  if (script->is_cancelled) {
+    GPRINT_CTAG (ORANGE, "[int-handler]", "In our interrupt handler!!\n");
+    GDateTime * now = g_date_time_new_now_local();
+    gchar * timestamp_str = g_date_time_format(now, "%Y-%m-%d %H:%M:%S");
+    GPRINT_CTAG (ORANGE, "[int-handler]", "We (0x%p) are cancelled: %s!\n",
+        script, timestamp_str);
+    rc = 1;
+  }
+
+  g_object_unref (script);
+
+  return rc;
+}
+
+static void
+gum_quick_register_interrupt_handler(GumQuickScript * script) {
+  GPRINT_CTAG(ORANGE, "[int-handler-register]", "Registering int. handler!\n");
+  g_assert (script->is_cancelled == false);
+  JS_SetInterruptHandler (script->rt, gum_cancellable_interrupt_handler,
+      script);
+}
+
+
+static void
+gum_quick_remove_interrupt_handler(GumQuickScript * script) {
+  GPRINT_CTAG(ORANGE, "[int-handler-remove]", "Removing int. handler!\n");
+  JS_SetInterruptHandler (script->rt, NULL, NULL);
+}
+
+#if 0
+GUM_API void
+gum_quick_set_is_cancelled(gboolean status) {
+   g_mutex_init(&gGumJSTerminationMutex);
+   gGumJSWasTerminated = status;
+   GDateTime * now = g_date_time_new_now_local();
+   gchar * timestamp_str = g_date_time_format(now, "%Y-%m-%d %H:%M:%S");
+   g_print ("gum_quick_script_cancel: %d %s!\n", status, timestamp_str);
+   g_mutex_clear(&gGumJSTerminationMutex);
+}
+#endif
+
 static void
 gum_quick_script_execute_entrypoints (GumQuickScript * self,
                                       GumScriptTask * task)
@@ -678,6 +757,14 @@ gum_quick_script_execute_entrypoints (GumQuickScript * self,
   gboolean done;
 
   _gum_quick_scope_enter (&scope, &self->core);
+
+  // g_print ("Checking cancellable!\n");
+  // // Check if the task was provided a cancellable
+  // if (task->cancellable != NULL)
+  // {
+  //   g_print ("Setting our handler!\n");
+  //   JS_SetInterruptHandler (JS_GetRuntime (ctx), gum_cancellable_interrupt_handler, task->cancellable);
+  // }
 
   gum_quick_bundle_load (gumjs_runtime_modules, ctx);
 
@@ -694,11 +781,17 @@ gum_quick_script_execute_entrypoints (GumQuickScript * self,
     num_results = 0;
     for (i = 0; i != entrypoints->len; i++)
     {
+      GPRINT_CTAG(BLUE, "[execute-entrypoints]", "esm - Executing entry point: %u!\n", i);
       JSValue result;
 
       result = JS_EvalFunction (ctx, g_array_index (entrypoints, JSValue, i));
       if (JS_IsException (result))
       {
+        JSValue exception = JS_GetException(ctx);
+        const char *error = JS_ToCString(ctx, exception);
+        GPRINT_CTAG(BLUE, "[execute-entrypoints]", "Script Error: %s\n", error);
+        JS_FreeCString(ctx, error);
+        JS_FreeValue(ctx, exception);
         _gum_quick_scope_catch_and_emit (&scope);
       }
       else
@@ -741,11 +834,30 @@ gum_quick_script_execute_entrypoints (GumQuickScript * self,
   {
     for (i = 0; i != entrypoints->len; i++)
     {
+      GPRINT_CTAG(BLUE, "[execute-entrypoints]", "non-esm - Executing entry point: %u!\n", i);
       JSValue result;
 
       result = JS_EvalFunction (ctx, g_array_index (entrypoints, JSValue, i));
       if (JS_IsException (result))
+      {
+        JSValue exception = JS_GetException(ctx);
+        const char *error = JS_ToCString(ctx, exception);
+        GPRINT_CTAG(BLUE, "[execute-entrypoints]", "Script Error: %s\n", error);
+        JS_FreeCString(ctx, error);
+        JS_FreeValue(ctx, exception);
+
+        // if this was due to script cancellation break here and handle it
+        if (self->is_cancelled) {
+          // TODO: We can check also that the exception was an internal error:
+          // interrupted, generated by our interrupt handler
+          JS_FreeValue (ctx, result);
+          break;
+        }
+
         _gum_quick_scope_catch_and_emit (&scope);
+        JS_FreeValue (ctx, result);
+
+      }
 
       JS_FreeValue (ctx, result);
     }
@@ -753,15 +865,27 @@ gum_quick_script_execute_entrypoints (GumQuickScript * self,
     done = TRUE;
   }
 
+  GPRINT_CTAG(BLUE, "[execute-entrypoints]", "End of entry points execution !\n");
   g_array_set_size (entrypoints, 0);
 
   _gum_quick_scope_leave (&scope);
+  GPRINT_CTAG(BLUE, "[execute-entrypoints]", "Left scope!\n");
 
   if (done)
   {
     self->state = GUM_SCRIPT_STATE_LOADED;
 
+    // end of execution: remove interrupt handler
+    gum_quick_remove_interrupt_handler(self);
+
     gum_script_task_return_pointer (task, NULL, NULL);
+
+    // handle cancelled script
+    if (self->is_cancelled) {
+      // dispose and unload early
+      gum_quick_script_dispose((GObject *) self);
+
+    }
   }
 }
 
@@ -864,6 +988,15 @@ gum_quick_script_unload_finish (GumScript * script,
   gum_script_task_propagate_pointer (GUM_SCRIPT_TASK (result), NULL);
 }
 
+// XXX This should be called after gum_quick_script_(load|load_sync)
+static void
+gum_quick_script_cancel (GumScript * script)
+{
+  GumQuickScript * self = GUM_QUICK_SCRIPT (script);
+  self->is_cancelled = true;
+}
+
+
 static void
 gum_quick_script_unload_sync (GumScript * script,
                               GCancellable * cancellable)
@@ -885,9 +1018,10 @@ gum_quick_script_do_unload (GumScriptTask * task,
                             gpointer task_data,
                             GCancellable * cancellable)
 {
-  if (self->state != GUM_SCRIPT_STATE_LOADED)
+  if (!self->is_cancelled || self->state != GUM_SCRIPT_STATE_LOADED)
     goto invalid_operation;
 
+  GPRINT_CTAG_IC(BOLDMAGENTA, "[do-unload]", "task: 0x%p - is script cacnelled: %d\n", task, self->is_cancelled);
   self->state = GUM_SCRIPT_STATE_UNLOADING;
   gum_quick_script_once_unloaded (self,
       (GumUnloadNotifyFunc) gum_quick_script_complete_unload_task,
@@ -914,25 +1048,39 @@ gum_quick_script_complete_unload_task (GumQuickScript * self,
   gum_script_task_return_pointer (task, NULL, NULL);
 }
 
+
 static void
 gum_quick_script_try_unload (GumQuickScript * self)
 {
   GumQuickScope scope;
   gboolean success;
 
-  g_assert (self->state == GUM_SCRIPT_STATE_UNLOADING);
+  g_assert (self->state == GUM_SCRIPT_STATE_UNLOADING || self->is_cancelled);
+
+  GPRINT_CTAG_IC(BOLDMAGENTA, "[try-unload]", "is script cancelled: %d\n", self->is_cancelled);
 
   _gum_quick_scope_enter (&scope, &self->core);
 
+  GPRINT_CTAG_IC(BOLDMAGENTA, "[try-unload]", "flushing stalker...");
   _gum_quick_stalker_flush (&self->stalker);
+  GPRINT_C_IC(GREEN, "ok\n");
+  GPRINT_CTAG_IC(BOLDMAGENTA, "[try-unload]", "flushing interceptor...");
   _gum_quick_interceptor_flush (&self->interceptor);
+  GPRINT_C_IC(GREEN, "ok\n");
+  GPRINT_CTAG_IC(BOLDMAGENTA, "[try-unload]", "flushing socket...");
   _gum_quick_socket_flush (&self->socket);
+  GPRINT_C_IC(GREEN, "ok\n");
+  GPRINT_CTAG_IC(BOLDMAGENTA, "[try-unload]", "flushing stream...");
   _gum_quick_stream_flush (&self->stream);
+  GPRINT_C_IC(GREEN, "ok\n");
+  GPRINT_CTAG_IC(BOLDMAGENTA, "[try-unload]", "flushing process...");
   _gum_quick_process_flush (&self->process);
+  GPRINT_C_IC(GREEN, "ok\n");
+  GPRINT_CTAG_IC(BOLDMAGENTA, "[try-unload]", "flushing core...");
   success = _gum_quick_core_flush (&self->core,
       (GumQuickFlushNotify) gum_quick_script_try_unload,
       g_object_ref (self), g_object_unref);
-
+  success ? ({GPRINT_C_IC(GREEN, "ok\n");}) : ({GPRINT_C_IC(BOLDRED, "failed\n");});
   _gum_quick_scope_leave (&scope);
 
   if (success)
@@ -940,6 +1088,8 @@ gum_quick_script_try_unload (GumQuickScript * self)
     gum_quick_script_destroy_context (self);
 
     self->state = GUM_SCRIPT_STATE_UNLOADED;
+
+    GPRINT_CTAG_IC(BOLDMAGENTA, "[try-unload]", "running on_load callback...");
 
     while (self->on_unload != NULL)
     {
@@ -953,6 +1103,8 @@ gum_quick_script_try_unload (GumQuickScript * self)
 
       self->on_unload = g_slist_delete_link (self->on_unload, link);
     }
+    GPRINT_C_IC(GREEN, "ok\n");
+    GPRINT_CTAG_IC(BOLDMAGENTA, "[try-unload]", "finished!\n");
   }
 }
 
