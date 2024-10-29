@@ -366,9 +366,6 @@ gum_quick_script_dispose (GObject * object)
 
   gum_quick_script_set_message_handler (script, NULL, NULL, NULL);
 
-  gum_quick_remove_interrupt_handler(self);
-
-
   g_rec_mutex_lock (&self->cancellation_mutex);
   if (self->state == GUM_SCRIPT_STATE_LOADED || self->is_cancelled)
   {
@@ -614,6 +611,8 @@ gum_quick_script_destroy_context (GumQuickScript * self)
 
     JS_FreeContext (self->ctx);
     self->ctx = NULL;
+
+    gum_quick_remove_interrupt_handler(self);
 
     self->is_cancelled = false;
     g_rec_mutex_clear (&self->cancellation_mutex);
